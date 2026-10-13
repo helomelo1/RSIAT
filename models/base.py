@@ -146,12 +146,13 @@ class BaseLearner(object):
 
     def _evaluate(self, y_pred, y_true):
         ret = {}
-        grouped = accuracy(y_pred.T[0], y_true, self._known_classes)
+        grouped = accuracy(y_pred.T[0], y_true, self._known_classes, increment=self.args.get("increment", 10))
         grouped = {k: float(v) for k, v in grouped.items()}
         ret["grouped"] = grouped
         ret["top1"] = grouped["total"]
+        actual_topk = min(self.topk, y_pred.shape[1])
         ret["top{}".format(self.topk)] = float(np.around(
-            (y_pred.T == np.tile(y_true, (self.topk, 1))).sum() * 100 / len(y_true),
+            (y_pred.T[:actual_topk] == np.tile(y_true, (actual_topk, 1))).sum() * 100 / len(y_true),
             decimals=2,
         ))
 
@@ -194,11 +195,14 @@ class BaseLearner(object):
             inputs = inputs.to(self._device)
             with torch.no_grad():
                 outputs = self._network(inputs)["logits"]
+            # predicts = torch.topk(
+            #     outputs, k=self.topk, dim=1, largest=True, sorted=True
+            # )[
+            #     1
+            # ]  # [bs, topk]
             predicts = torch.topk(
-                outputs, k=self.topk, dim=1, largest=True, sorted=True
-            )[
-                1
-            ]  # [bs, topk]
+                outputs, k=min(self.topk, outputs.size(1)), dim=1, largest=True, sorted=True
+            )[1]
             y_pred.append(predicts.cpu().numpy())
             y_true.append(targets.cpu().numpy())
 
